@@ -65,22 +65,17 @@ module leading_zeros #(	parameter SIZE_INT = 24,	//mantissa bits
 			genvar i;
 			for (i = 1; i <= nr_levels - 1; i = i + 1)
 			begin : level_generation
-				//begin : v_levels_begin
-					genvar j;
-					for (j = 0; j <= max_pow_2/(2 ** (i + 2)) - 1; j = j + 1)
-					begin : v_levels
-						assign v_d[i][j] = v_q[i - 1][2*j+1] | v_q[i - 1][2*j];
-					end
-				//end
+				genvar j;
+				for (j = 0; j <= max_pow_2/(2 ** (i + 2)) - 1; j = j + 1)
+				begin : v_levels
+					assign v_d[i][j] = v_q[i - 1][2*j+1] | v_q[i - 1][2*j];
+				end
 				
-				//begin : p_levels_begin
-				//	genvar j;
-					for (j = 0; j <= max_pow_2/(2 ** (i + 2)) - 1; j = j + 1)
-					begin : p_levels
-						assign p_d[i][(i+2)*j+i+1] = (~(v_q[i - 1][2*j+1]));
-						assign p_d[i][(i+2)*j+i : (i+2)*j] = (v_q[i - 1][2*j+1] == 1'b1) ? p_q[i - 1][j*(2*i+2)+2*i+1 : j*(2*i+2) + i + 1] : p_q[i - 1][j*(2*i+2)+i : j*(2*i+2)];
-					end
-				//end
+				for (j = 0; j <= max_pow_2/(2 ** (i + 2)) - 1; j = j + 1)
+				begin : p_levels
+					assign p_d[i][(i+2)*j+i+1] = (~(v_q[i - 1][2*j+1]));
+					assign p_d[i][(i+2)*j+i : (i+2)*j] = (v_q[i - 1][2*j+1] == 1'b1) ? p_q[i - 1][j*(2*i+2)+2*i+1 : j*(2*i+2) + i + 1] : p_q[i - 1][j*(2*i+2)+i : j*(2*i+2)];
+				end
 			end
 		end
 	endgenerate
@@ -88,23 +83,22 @@ module leading_zeros #(	parameter SIZE_INT = 24,	//mantissa bits
 	generate
 		if (PIPELINE != 0)
 		begin : pipeline_stages
-			//begin : INSERTION_begin
-				genvar i;
-				for (i = 0; i <= nr_levels - 2; i = i + 1)
-				begin : INSERTION
-					if ((i + 1) % nr_levels/(PIPELINE + 1) == 0)
-					begin : INS
-						d_ff #(max_pow_2) P_Di(.clk(clk), .rst(rst), .d(p_d[i]), .q(p_q[i]));
-						d_ff #(max_pow_2) V_Di(.clk(clk), .rst(rst), .d(v_d[i]), .q(v_q[i]));
-					end
-					 
-					if ((i + 1) % nr_levels/(PIPELINE + 1) != 0)
-					begin : NO_INS
-						assign p_q[i] = p_d[i];
-						assign v_q[i] = v_d[i];
-					end
+			genvar i;
+			for (i = 0; i <= nr_levels - 2; i = i + 1)
+			begin : INSERTION
+				if ((i + 1) % nr_levels/(PIPELINE + 1) == 0)
+				begin : INS
+					d_ff #(max_pow_2) P_Di(.clk(clk), .rst(rst), .d(p_d[i]), .q(p_q[i]));
+					d_ff #(max_pow_2) V_Di(.clk(clk), .rst(rst), .d(v_d[i]), .q(v_q[i]));
 				end
-			//end
+					 
+				if ((i + 1) % nr_levels/(PIPELINE + 1) != 0)
+				begin : NO_INS
+					assign p_q[i] = p_d[i];
+					assign v_q[i] = v_d[i];
+				end
+			end
+			
 			assign p_q[nr_levels - 1] = p_d[nr_levels - 1];
 			assign v_q[nr_levels - 1] = v_d[nr_levels - 1];
 		end
@@ -113,14 +107,12 @@ module leading_zeros #(	parameter SIZE_INT = 24,	//mantissa bits
 	generate
 		if (PIPELINE == 0)
 		begin : no_pipeline
-			//begin : xhdl4
-				genvar i;
-				for (i = 0; i <= nr_levels - 1; i = i + 1)
-				begin : NO_INSERTION
-					assign p_q[i] = p_d[i];
-					assign v_q[i] = v_d[i];
-				end
-			//end
+			genvar i;
+			for (i = 0; i <= nr_levels - 1; i = i + 1)
+			begin : NO_INSERTION
+				assign p_q[i] = p_d[i];
+				assign v_q[i] = v_d[i];
+			end
 		end
 	endgenerate
 	
@@ -136,8 +128,5 @@ module leading_zeros #(	parameter SIZE_INT = 24,	//mantissa bits
 		end
 	endgenerate
 
-	//assign a_out = (a_complete[max_pow_2 - 1: max_pow_2 - SIZE_INT])<<lzc;
-	//output [SIZE_INT-1:0]   a_out;
-	
 endmodule
 

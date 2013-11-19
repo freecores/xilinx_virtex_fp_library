@@ -47,40 +47,36 @@ module shifter #(	parameter                INPUT_SIZE = 13,
 		begin : BARREL_SHIFTER_GENERATION
 			if (DIRECTION == 1)
 			begin : LEFT
-				//begin : 1st_check
-					genvar j;
-					for (j = 0; j <= OUTPUT_SIZE - 1; j = j + 1)
-					begin : MUX_GEN_L
-						if (j < 2 ** i)
-						begin : ZERO_INS_L
-							assign a_temp_d[i][j] = (shft[i] == 1'b0) ? a_temp_q[i][j] : arith;
-						end
-							  
-						if (j >= 2 ** i)
-						begin : BIT_INS_L
-							assign a_temp_d[i][j] = (shft[i] == 1'b0) ? a_temp_q[i][j] : a_temp_q[i][j-2**i];
-						end
+				genvar j;
+				for (j = 0; j <= OUTPUT_SIZE - 1; j = j + 1)
+				begin : MUX_GEN_L
+					if (j < 2 ** i)
+					begin : ZERO_INS_L
+						assign a_temp_d[i][j] = (shft[i] == 1'b0) ? a_temp_q[i][j] : arith;
 					end
-				//end
-				  end
+							  
+					if (j >= 2 ** i)
+					begin : BIT_INS_L
+						assign a_temp_d[i][j] = (shft[i] == 1'b0) ? a_temp_q[i][j] : a_temp_q[i][j-2**i];
+					end
+				end
+			end
 			
 			if (DIRECTION == 0)
 			begin : RIGHT
-				//begin : 2nd_check
-					genvar j;
-					for (j = 0; j <= OUTPUT_SIZE - 1; j = j + 1)
-					begin : MUX_GEN_R
-						if (OUTPUT_SIZE - 1 < 2 ** i + j)
-						begin : ZERO_INS_R
-							assign a_temp_d[i][j] = (shft[i] == 1'b0) ? a_temp_q[i][j] : arith;
-						end
-							  
-						if (OUTPUT_SIZE - 1 >= 2 ** i + j)
-						begin : BIT_INS_R
-							assign a_temp_d[i][j] = (shft[i] == 1'b0) ? a_temp_q[i][j] : a_temp_q[i][j+2**i];
-						end
+				genvar j;
+				for (j = 0; j <= OUTPUT_SIZE - 1; j = j + 1)
+				begin : MUX_GEN_R
+					if (OUTPUT_SIZE - 1 < 2 ** i + j)
+					begin : ZERO_INS_R
+						assign a_temp_d[i][j] = (shft[i] == 1'b0) ? a_temp_q[i][j] : arith;
 					end
-				//end
+							  
+					if (OUTPUT_SIZE - 1 >= 2 ** i + j)
+					begin : BIT_INS_R
+						assign a_temp_d[i][j] = (shft[i] == 1'b0) ? a_temp_q[i][j] : a_temp_q[i][j+2**i];
+					end
+				end
 			end
 			
 			if (PIPELINE != 0)
