@@ -32,115 +32,125 @@ module DualPathFPAdder #(	parameter size_mantissa 			= 24, //1.M
 									parameter double_size_counter		= size_counter + 1,
 									parameter size	= size_mantissa + size_exponent + size_exception_field)
 										
-									(sub, a_number_i, b_number_i, resulted_number_o);
-	input sub;
-	input [size - 1 : 0] a_number_i;
-	input [size - 1 : 0] b_number_i;
-	output[size - 1 : 0] resulted_number_o;
+									(	input sub,
+										input [size - 1 : 0] a_number_i,
+										input [size - 1 : 0] b_number_i,
+										output[size - 1 : 0] resulted_number_o);
 
+	wire [size_exception_field - 1 : 0] sp_case_a_number, sp_case_b_number; 
 	wire [size_mantissa - 1 : 0] m_a_number, m_b_number;
 	wire [size_exponent - 1 : 0] e_a_number, e_b_number;
-	wire s_a_number, s_b_number;
-	wire [size_exception_field - 1 : 0] sp_case_a_number, sp_case_b_number; 
-
+	wire s_a_number, s_b_number; 
+	
+	wire [size_exponent     : 0] a_greater_exponent, b_greater_exponent;
+	
 	wire [size_exponent - 1 : 0] exp_difference;
-	wire [size_exponent - 1 : 0] modify_exp_a, modify_exp_b;
-	wire [double_size_mantissa - 1 : 0] shifted_m_a, shifted_m_b;
+	wire [size_exponent     : 0] exp_inter;
+	wire [size_mantissa - 1 : 0] shifted_m_b;
+	wire [size_mantissa - 1 : 0] initial_rounding_bits, inter_rounding_bits;
+	wire eff_op;
+	
+	wire [size_mantissa + 1	: 0] adder_mantissa;
+	wire [size_mantissa 	: 0] unnormalized_mantissa;
 	
 	wire [size_mantissa-1 : 0] fp_resulted_m_o, cp_resulted_m_o;
 	wire [size_exponent-1 : 0] fp_resulted_e_o, cp_resulted_e_o;
 	
-	wire resulted_sign;
 	wire [size_exception_field - 1 : 0] resulted_exception_field;
+	wire resulted_sign;
+	
+	wire zero_flag;
+	
 
-	assign m_a_number = {1'b1, a_number_i[size_mantissa - 2 :0]};
-	assign m_b_number	= {1'b1, b_number_i[size_mantissa - 2 :0]};
 	assign e_a_number	= a_number_i[size_mantissa + size_exponent - 1 : size_mantissa - 1];
 	assign e_b_number = b_number_i[size_mantissa + size_exponent - 1 : size_mantissa - 1];
 	assign s_a_number = a_number_i[size - size_exception_field - 1];
 	assign s_b_number = b_number_i[size - size_exception_field - 1];
 	assign sp_case_a_number = a_number_i[size - 1 : size - size_exception_field];
 	assign sp_case_b_number = b_number_i[size - 1 : size - size_exception_field];
-
+	
+	
+	//find the greater exponent
+	assign a_greater_exponent = e_a_number - e_b_number;
+	assign b_greater_exponent = e_b_number - e_a_number;
+	
 	//find the difference between exponents
-	assign exp_difference = (e_a_number > e_b_number)? (e_a_number - e_b_number) : (e_b_number - e_a_number);
-	assign {modify_exp_a, modify_exp_b} = (e_a_number > e_b_number)? {8'd0, exp_difference} : {exp_difference, 8'd0};
- 
-	//shift the right mantissa
+	assign exp_difference 	= (a_greater_exponent[size_exponent])? b_greater_exponent[size_exponent - 1 : 0] : a_greater_exponent[size_exponent - 1 : 0];
+	assign exp_inter 		= (b_greater_exponent[size_exponent])? {1'b0, e_a_number} : {1'b0, e_b_number};
+	
+	//set shifter always on m_b_number
+	assign {m_a_number, m_b_number} = (b_greater_exponent[size_exponent])?
+													{{1'b1, a_number_i[size_mantissa - 2 :0]}, {1'b1, b_number_i[size_mantissa - 2 :0]}} : 
+													{{1'b1, b_number_i[size_mantissa - 2 :0]}, {1'b1, a_number_i[size_mantissa - 2 :0]}};
+
+	//shift m_b_number				
 	shifter #(	.INPUT_SIZE(size_mantissa),
-					.SHIFT_SIZE(size_exponent),
-					.OUTPUT_SIZE(double_size_mantissa),
-					.DIRECTION(1'b0), 
-					.PIPELINE(pipeline),
-					.POSITION(pipeline_pos))
-		m_a_shifter_instance(	.a(m_a_number),
-										.arith(1'b0),
-										.shft(modify_exp_a),
-										.shifted_a(shifted_m_a));
-										
-	shifter #(	.INPUT_SIZE(size_mantissa),
-					.SHIFT_SIZE(size_exponent),
-					.OUTPUT_SIZE(double_size_mantissa),
-					.DIRECTION(1'b0), 
-					.PIPELINE(pipeline),
-					.POSITION(pipeline_pos))
-		m_b_shifter_instance(	.a(m_b_number),
-										.arith(1'b0),
-										.shft(modify_exp_b),
-										.shifted_a(shifted_m_b));
+				.SHIFT_SIZE(size_exponent),
+				.OUTPUT_SIZE(double_size_mantissa),
+				.DIRECTION(1'b0), //0=right, 1=left
+				.PIPELINE(pipeline),
+				.POSITION(pipeline_pos))
+		m_b_shifter_instance(	.a(m_b_number),//mantissa
+								.arith(1'b0),//logical shift
+								.shft(exp_difference),
+								.shifted_a({shifted_m_b, initial_rounding_bits}));
 										
 	//istantiate effective_operation_component
-		effective_op effective_op_instance( .a_sign(s_a_number), .b_sign(s_b_number), .sub(sub), .eff_op(eff_op));
+	effective_op effective_op_instance( .a_sign(s_a_number), .b_sign(s_b_number), .sub(sub), .eff_op(eff_op));
+			
+	//compute unnormalized_mantissa
+	assign adder_mantissa = (eff_op)? ({1'b0, m_a_number} - {1'b0, shifted_m_b}) : ({1'b0, m_a_number} + {1'b0, shifted_m_b});
+	
+	assign {unnormalized_mantissa, inter_rounding_bits} = 
+								(adder_mantissa[size_mantissa + 1])?	({~adder_mantissa[size_mantissa : 0], ~initial_rounding_bits}) : 
+																		({adder_mantissa[size_mantissa 	: 0], initial_rounding_bits});
 		
-
-
-	//instantiate special_cases component
-	special_cases #(	.size_exception_field(size_exception_field), 
-							.zero(zero), 			
-							.normal_number(normal_number),
-							.infinity(infinity),
-							.NaN(NaN))
-		special_cases_instance	( 	.sp_case_a_number(sp_case_a_number),
-											.sp_case_b_number(sp_case_b_number),
-											.sp_case_result_o(resulted_exception_field)); 					  
-								  
 	//instantiate FarPath component
-	FarPath	#(	.size_in_mantissa(double_size_mantissa),	
+	FarPath	#(	.size_in_mantissa(size_mantissa),	
 					.size_out_mantissa(size_mantissa),	
 					.size_exponent(size_exponent), 	
 					.pipeline(pipeline),			
 					.pipeline_pos(pipeline_pos),		
 					.size_counter(size_counter),
-					.double_size_counter(double_size_counter),
-					.double_size_mantissa(double_size_mantissa))
-		FarPath_instance (	.eff_op(eff_op),
-									.m_a_number(shifted_m_a),
-		                     .m_b_number(shifted_m_b),
-		                     .e_a_number(e_a_number),
-		                     .e_b_number(e_b_number),
-		                     .resulted_m_o(fp_resulted_m_o),
-									.resulted_e_o(fp_resulted_e_o));
-					
-
-//instantiate ClosePath component
-	ClosePath #(.size_in_mantissa(double_size_mantissa),	
+					.double_size_in_mantissa(double_size_mantissa))
+		FarPath_instance (	.unnormalized_mantissa(unnormalized_mantissa),
+							.inter_rounding_bits(inter_rounding_bits),
+		                    .exp_inter(exp_inter),
+		                    .resulted_m_o(fp_resulted_m_o),
+		                    .resulted_e_o(fp_resulted_e_o));
+		
+	//instantiate ClosePath component
+	ClosePath #(.size_in_mantissa(size_mantissa),	
 					.size_out_mantissa(size_mantissa),	
 					.size_exponent(size_exponent), 	
 					.pipeline(pipeline),			
 					.pipeline_pos(pipeline_pos),	
 					.size_counter(size_counter),
-					.double_size_counter(double_size_counter),
-					.double_size_mantissa(double_size_mantissa))
-		ClosePath_instance(	.eff_op(eff_op),
-									.m_a_number(shifted_m_a),
-		                     .m_b_number(shifted_m_b),
-		                     .e_a_number(e_a_number),
-		                     .e_b_number(e_b_number),
-		                     .resulted_m_o(cp_resulted_m_o),
-									.resulted_e_o(cp_resulted_e_o));
-									
-	assign resulted_sign = (eff_op)? ((shifted_m_a > shifted_m_b)? s_a_number : ~s_a_number) : s_a_number;
+					.double_size_in_mantissa(double_size_mantissa))
+		ClosePath_instance(	.unnormalized_mantissa(unnormalized_mantissa),
+							.inter_rounding_bits(inter_rounding_bits),
+								.exp_inter(exp_inter),
+								.resulted_m_o(cp_resulted_m_o),
+								.resulted_e_o(cp_resulted_e_o));			
 	
-	assign resulted_number_o = (exp_difference > 1)? 	{resulted_exception_field, resulted_sign, fp_resulted_e_o, fp_resulted_m_o[size_mantissa-2 : 0]}:
+	//compute exception_field
+	special_cases	#(	.size_exception_field(size_exception_field),
+							.zero(zero), 
+							.normal_number(normal_number),
+							.infinity(infinity),
+							.NaN(NaN))
+		special_cases_instance( .sp_case_a_number(sp_case_a_number),
+										.sp_case_b_number(sp_case_b_number),
+										.sp_case_result_o(resulted_exception_field)); 
+	
+	//set zero_flag in case of equal numbers
+	assign zero_flag = (exp_difference > 1)? ~(|fp_resulted_m_o) : ~(|cp_resulted_m_o);
+									
+	assign resulted_sign = (eff_op)? 
+					(!a_greater_exponent[size_exponent]? (!b_greater_exponent[size_exponent]? ~adder_mantissa[size_mantissa+1] : s_a_number) : ~s_b_number) : 
+					s_a_number;
+		
+	assign resulted_number_o = (zero_flag)? {size{1'b0}} :
+									(exp_difference > 1)? 	{resulted_exception_field, resulted_sign, fp_resulted_e_o, fp_resulted_m_o[size_mantissa-2 : 0]}:
 																		{resulted_exception_field, resulted_sign, cp_resulted_e_o, cp_resulted_m_o[size_mantissa-2 : 0]};
 endmodule

@@ -19,43 +19,36 @@
 //
 //////////////////////////////////////////////////////////////////////////////////
 module FarPath	#(	parameter size_in_mantissa			= 24, //1.M
-						parameter size_out_mantissa		= 24,
-						parameter size_exponent 			= 8,
-						parameter pipeline					= 0,
-						parameter pipeline_pos				= 0,	// 8 bits
-						parameter size_counter				= 5,	//log2(size_mantissa) + 1 = 5)
-						parameter double_size_counter		= size_counter + 1,
-						parameter double_size_mantissa	= size_in_mantissa + size_in_mantissa)
-										
-					(	input eff_op, 
-						input [size_in_mantissa-1 :0] m_a_number, 
-						input [size_in_mantissa-1 :0] m_b_number,
-						input [size_exponent - 1 : 0] e_a_number,
-						input [size_exponent - 1 : 0] e_b_number,
-						output[size_out_mantissa-1:0] resulted_m_o,
-						output[size_exponent - 1 : 0] resulted_e_o);
+							parameter size_out_mantissa		= 24,
+							parameter size_exponent 			= 8,
+							parameter pipeline					= 0,
+							parameter pipeline_pos				= 0,	// 8 bits
+							parameter size_counter				= 5,	//log2(size_in_mantissa) + 1 = 5)
+							parameter double_size_in_mantissa   = size_in_mantissa + size_in_mantissa)
+						(	input [size_in_mantissa		: 0] unnormalized_mantissa,
+							input [size_in_mantissa - 1 : 0] inter_rounding_bits,
+							input [size_exponent		: 0] exp_inter,
+							output[size_out_mantissa- 1 : 0] resulted_m_o,
+							output[size_exponent - 1	: 0] resulted_e_o);
 
-	wire [double_size_mantissa:0] unnormalized_mantissa;
-	wire [7:0] adjust_mantissa;
-	wire [double_size_mantissa:0] normalized_mantissa;
+	wire [size_exponent- 1 : 0] adjust_mantissa;
+	wire [size_exponent- 1 : 0] unadjusted_exponent;
+	wire [double_size_in_mantissa:0] normalized_mantissa;
 	
 	wire dummy_bit;
+											
+	assign adjust_mantissa = unnormalized_mantissa[size_in_mantissa]? 2'd0 :
+										unnormalized_mantissa[size_in_mantissa-1]? 2'd1 : 2'd2;
 										
-	//compute unnormalized_mantissa
-	assign unnormalized_mantissa = (eff_op)? ((m_a_number > m_b_number)? (m_a_number - m_b_number) : (m_b_number - m_a_number)) :
-															m_a_number + m_b_number;
-	
-	assign adjust_mantissa = unnormalized_mantissa[double_size_mantissa]? 8'd0 :
-										unnormalized_mantissa[double_size_mantissa-1]? 2'd1 : 8'd2;
 										
 	//compute shifting over unnormalized_mantissa
-	shifter #(	.INPUT_SIZE(double_size_mantissa+1),
+	shifter #(	.INPUT_SIZE(double_size_in_mantissa+1),
 					.SHIFT_SIZE(size_exponent),
-					.OUTPUT_SIZE(double_size_mantissa+2),
+					.OUTPUT_SIZE(double_size_in_mantissa+2),
 					.DIRECTION(1'b1),
 					.PIPELINE(pipeline),
 					.POSITION(pipeline_pos))
-		unnormalized_no_shifter_instance(.a(unnormalized_mantissa),
+		unnormalized_no_shifter_instance(.a({unnormalized_mantissa, inter_rounding_bits}),
 													.arith(1'b0),
 													.shft(adjust_mantissa),
 													.shifted_a({normalized_mantissa, dummy_bit}));
@@ -63,10 +56,11 @@ module FarPath	#(	parameter size_in_mantissa			= 24, //1.M
 	//instantiate rounding_component
 	rounding #(	.SIZE_MOST_S_MANTISSA(size_out_mantissa),
 					.SIZE_LEAST_S_MANTISSA(size_out_mantissa + 2'd1))
-		rounding_instance(	.unrounded_mantissa(normalized_mantissa[double_size_mantissa : double_size_mantissa - size_out_mantissa + 1]),
-									.dummy_bits(normalized_mantissa[double_size_mantissa - size_out_mantissa: 0]),
+		rounding_instance(	.unrounded_mantissa(normalized_mantissa[double_size_in_mantissa : double_size_in_mantissa - size_out_mantissa + 1]),
+									.dummy_bits(normalized_mantissa[double_size_in_mantissa - size_out_mantissa: 0]),
 									.rounded_mantissa(resulted_m_o));
-									
-	assign resulted_e_o = (e_a_number > e_b_number)? (e_a_number + 1 - adjust_mantissa):(e_b_number + 1 - adjust_mantissa);
-	 
+	
+	assign unadjusted_exponent = exp_inter - adjust_mantissa;	
+	assign resulted_e_o = unadjusted_exponent + 1'b1;
+	
 endmodule

@@ -38,7 +38,7 @@ module special_cases_mul_acc	#(	parameter size_exception_field = 2'd2,
 			{zero, zero, NaN}: 										sp_case_result_o = NaN;
 						
 			{zero, normal_number,zero}:							sp_case_result_o = zero; 
-			{zero, normal_number,normal_number}:				sp_case_result_o = normal_number; 
+			{zero, normal_number,normal_number}:				sp_case_result_o = normal_number;
 			{zero, normal_number,infinity}:						sp_case_result_o = infinity; 
 			{zero, normal_number,NaN}:								sp_case_result_o = NaN; 
 				
@@ -57,8 +57,8 @@ module special_cases_mul_acc	#(	parameter size_exception_field = 2'd2,
 			{normal_number, zero, infinity}: 					sp_case_result_o = infinity; 
 			{normal_number, zero, NaN}: 							sp_case_result_o = NaN; 
 				
-			{normal_number, normal_number, zero}: 				sp_case_result_o = normal_number; 
-			{normal_number, normal_number, normal_number}: 	sp_case_result_o = normal_number; 
+			{normal_number, normal_number, zero}: 				sp_case_result_o = normal_number;
+			{normal_number, normal_number, normal_number}: 	sp_case_result_o = normal_number;
 			{normal_number, normal_number, infinity}: 		sp_case_result_o = infinity; 
 			{normal_number, normal_number, NaN}: 				sp_case_result_o = NaN; 
 				

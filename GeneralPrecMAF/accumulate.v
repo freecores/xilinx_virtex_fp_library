@@ -18,15 +18,12 @@
 // Additional Comments: 
 //
 //////////////////////////////////////////////////////////////////////////////////
-module accumulate #(	parameter size_mantissa = 24,	//mantissa bits
-							parameter size_counter	= 5,	//log2(size_quotient) + 1 = 5
-							parameter size_mul_mantissa = size_mantissa + size_mantissa)
-						(	input [size_mul_mantissa-1:0] ab_number_i,
-							input [size_mul_mantissa-1:0] c_number_i,
-							input sub,
-							output ovf,
-							output[size_mul_mantissa  :0] acc_resulting_number_o);
+module accumulate #(	parameter size_mul_mantissa  = 48)	//mantissa bits)
+						(	input [size_mul_mantissa - 1:0] m_a,
+							input [size_mul_mantissa - 1:0] m_b,
+							input eff_op,
+							output[size_mul_mantissa + 1 : 0] adder_mantissa);
 
-assign {ovf, acc_resulting_number_o} = sub? ((ab_number_i >=c_number_i)? (ab_number_i - c_number_i) : (c_number_i - ab_number_i)) : c_number_i + ab_number_i;
+assign adder_mantissa = (eff_op)? ({1'b0, m_a} - {1'b0, m_b}) : ({1'b0, m_a} + {1'b0, m_b});
 
 endmodule
