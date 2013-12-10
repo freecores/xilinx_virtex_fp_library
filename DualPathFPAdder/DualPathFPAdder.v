@@ -23,16 +23,21 @@ module DualPathFPAdder #(	parameter size_mantissa 			= 24, //1.M
 									parameter size_exception_field	= 2,
 									parameter size_counter				= 5,	//log2(size_mantissa) + 1 = 5)
 									parameter [size_exception_field - 1 : 0] zero			= 0, //00
-									parameter [size_exception_field - 1 : 0] normal_number= 1, //01
+									parameter [size_exception_field - 1 : 0] normal_number	= 1, //01
 									parameter [size_exception_field - 1 : 0] infinity		= 2, //10
 									parameter [size_exception_field - 1 : 0] NaN				= 3, //11
+									parameter [1 : 0] FP_operation 	= 0,
+									parameter [1 : 0] FP_to_int		= 1,
+									parameter [1 : 0] int_operation = 3,
+									
 									parameter pipeline					= 0,
 									parameter pipeline_pos				= 0,	// 8 bits
 									parameter double_size_mantissa	= size_mantissa + size_mantissa,
 									parameter double_size_counter		= size_counter + 1,
 									parameter size	= size_mantissa + size_exponent + size_exception_field)
 										
-									(	input sub,
+									(	input [1:0] conversion,
+										input sub,
 										input [size - 1 : 0] a_number_i,
 										input [size - 1 : 0] b_number_i,
 										output[size - 1 : 0] resulted_number_o);
@@ -83,28 +88,9 @@ module DualPathFPAdder #(	parameter size_mantissa 			= 24, //1.M
 													{{1'b1, a_number_i[size_mantissa - 2 :0]}, {1'b1, b_number_i[size_mantissa - 2 :0]}} : 
 													{{1'b1, b_number_i[size_mantissa - 2 :0]}, {1'b1, a_number_i[size_mantissa - 2 :0]}};
 
-	//shift m_b_number				
-	shifter #(	.INPUT_SIZE(size_mantissa),
-				.SHIFT_SIZE(size_exponent),
-				.OUTPUT_SIZE(double_size_mantissa),
-				.DIRECTION(1'b0), //0=right, 1=left
-				.PIPELINE(pipeline),
-				.POSITION(pipeline_pos))
-		m_b_shifter_instance(	.a(m_b_number),//mantissa
-								.arith(1'b0),//logical shift
-								.shft(exp_difference),
-								.shifted_a({shifted_m_b, initial_rounding_bits}));
-										
-	//istantiate effective_operation_component
 	effective_op effective_op_instance( .a_sign(s_a_number), .b_sign(s_b_number), .sub(sub), .eff_op(eff_op));
-			
-	//compute unnormalized_mantissa
-	assign adder_mantissa = (eff_op)? ({1'b0, m_a_number} - {1'b0, shifted_m_b}) : ({1'b0, m_a_number} + {1'b0, shifted_m_b});
-	
-	assign {unnormalized_mantissa, inter_rounding_bits} = 
-								(adder_mantissa[size_mantissa + 1])?	({~adder_mantissa[size_mantissa : 0], ~initial_rounding_bits}) : 
-																		({adder_mantissa[size_mantissa 	: 0], initial_rounding_bits});
-		
+										
+										
 	//instantiate FarPath component
 	FarPath	#(	.size_in_mantissa(size_mantissa),	
 					.size_out_mantissa(size_mantissa),	
@@ -113,8 +99,10 @@ module DualPathFPAdder #(	parameter size_mantissa 			= 24, //1.M
 					.pipeline_pos(pipeline_pos),		
 					.size_counter(size_counter),
 					.double_size_in_mantissa(double_size_mantissa))
-		FarPath_instance (	.unnormalized_mantissa(unnormalized_mantissa),
-							.inter_rounding_bits(inter_rounding_bits),
+		FarPath_instance (	.m_a_number(m_a_number),
+							.m_b_number(m_b_number),
+							.eff_op(eff_op),
+							.exp_difference(exp_difference),
 		                    .exp_inter(exp_inter),
 		                    .resulted_m_o(fp_resulted_m_o),
 		                    .resulted_e_o(fp_resulted_e_o));
@@ -127,11 +115,13 @@ module DualPathFPAdder #(	parameter size_mantissa 			= 24, //1.M
 					.pipeline_pos(pipeline_pos),	
 					.size_counter(size_counter),
 					.double_size_in_mantissa(double_size_mantissa))
-		ClosePath_instance(	.unnormalized_mantissa(unnormalized_mantissa),
-							.inter_rounding_bits(inter_rounding_bits),
+		ClosePath_instance(	.m_a_number(m_a_number),
+							.m_b_number(m_b_number),
+							.exp_difference(exp_difference[0]),
 								.exp_inter(exp_inter),
 								.resulted_m_o(cp_resulted_m_o),
-								.resulted_e_o(cp_resulted_e_o));			
+								.resulted_e_o(cp_resulted_e_o),
+								.ovf(ovf));			
 	
 	//compute exception_field
 	special_cases	#(	.size_exception_field(size_exception_field),
@@ -144,13 +134,11 @@ module DualPathFPAdder #(	parameter size_mantissa 			= 24, //1.M
 										.sp_case_result_o(resulted_exception_field)); 
 	
 	//set zero_flag in case of equal numbers
-	assign zero_flag = (exp_difference > 1)? ~(|fp_resulted_m_o) : ~(|cp_resulted_m_o);
-									
-	assign resulted_sign = (eff_op)? 
-					(!a_greater_exponent[size_exponent]? (!b_greater_exponent[size_exponent]? ~adder_mantissa[size_mantissa+1] : s_a_number) : ~s_b_number) : 
-					s_a_number;
-		
+	assign zero_flag = (exp_difference > 1 | !eff_op)? ~(|fp_resulted_m_o) : ~(|cp_resulted_m_o);
+	
+	assign resulted_sign = (exp_difference > 1 | !eff_op)? (!a_greater_exponent[size_exponent]? s_a_number : s_b_number) : ~ovf;
+	
 	assign resulted_number_o = (zero_flag)? {size{1'b0}} :
-									(exp_difference > 1)? 	{resulted_exception_field, resulted_sign, fp_resulted_e_o, fp_resulted_m_o[size_mantissa-2 : 0]}:
+									(exp_difference > 1 | !eff_op)? 	{resulted_exception_field, resulted_sign, fp_resulted_e_o, fp_resulted_m_o[size_mantissa-2 : 0]}:
 																		{resulted_exception_field, resulted_sign, cp_resulted_e_o, cp_resulted_m_o[size_mantissa-2 : 0]};
 endmodule
