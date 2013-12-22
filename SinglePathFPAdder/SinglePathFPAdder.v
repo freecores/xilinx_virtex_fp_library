@@ -45,6 +45,7 @@ module SinglePathFPAdder #(	parameter size_mantissa 			= 24, //calculate the siz
 	
 	wire [size_exponent     : 0] a_greater_exponent, b_greater_exponent;
 	wire [size_exponent - 1 : 0] unadjusted_exponent;
+	wire [1 : 0] adjust_exponent;
 	
 	wire [size_exponent - 1 : 0] exp_difference;
 	wire [size_exponent     : 0] exp_inter;
