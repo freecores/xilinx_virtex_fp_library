@@ -63,6 +63,7 @@ module DualPathFPAdder #(	parameter size_mantissa 			= 24, //1.M
 	
 	wire [size_exception_field - 1 : 0] resulted_exception_field;
 	wire resulted_sign;
+	wire swap;
 	
 	wire zero_flag;
 	
@@ -84,9 +85,9 @@ module DualPathFPAdder #(	parameter size_mantissa 			= 24, //1.M
 	assign exp_inter 		= (b_greater_exponent[size_exponent])? {1'b0, e_a_number} : {1'b0, e_b_number};
 	
 	//set shifter always on m_b_number
-	assign {m_a_number, m_b_number} = (b_greater_exponent[size_exponent])?
-													{{1'b1, a_number_i[size_mantissa - 2 :0]}, {1'b1, b_number_i[size_mantissa - 2 :0]}} : 
-													{{1'b1, b_number_i[size_mantissa - 2 :0]}, {1'b1, a_number_i[size_mantissa - 2 :0]}};
+	assign {swap, m_a_number, m_b_number} = (b_greater_exponent[size_exponent])?
+													{1'b0, {1'b1, a_number_i[size_mantissa - 2 :0]}, {1'b1, b_number_i[size_mantissa - 2 :0]}} : 
+													{1'b1, {1'b1, b_number_i[size_mantissa - 2 :0]}, {1'b1, a_number_i[size_mantissa - 2 :0]}};
 
 	effective_op effective_op_instance( .a_sign(s_a_number), .b_sign(s_b_number), .sub(sub), .eff_op(eff_op));
 										
@@ -136,8 +137,8 @@ module DualPathFPAdder #(	parameter size_mantissa 			= 24, //1.M
 	//set zero_flag in case of equal numbers
 	assign zero_flag = (exp_difference > 1 | !eff_op)? ~(|fp_resulted_m_o) : ~(|cp_resulted_m_o);
 	
-	assign resulted_sign = (exp_difference > 1 | !eff_op)? (!a_greater_exponent[size_exponent]? s_a_number : s_b_number) : ~ovf;
-	
+	assign resulted_sign = (exp_difference > 1 | !eff_op)? (!a_greater_exponent[size_exponent]? s_a_number : (eff_op? ~s_b_number : s_b_number)) : (ovf ^ swap);
+		
 	assign resulted_number_o = (zero_flag)? {size{1'b0}} :
 									(exp_difference > 1 | !eff_op)? 	{resulted_exception_field, resulted_sign, fp_resulted_e_o, fp_resulted_m_o[size_mantissa-2 : 0]}:
 																		{resulted_exception_field, resulted_sign, cp_resulted_e_o, cp_resulted_m_o[size_mantissa-2 : 0]};

@@ -36,6 +36,7 @@ module ClosePath	#(	parameter size_in_mantissa			= 24, //1.M
 
 	wire [size_counter - 1 : 0] lzs;
 	wire [size_exponent- 1 : 0] unadjusted_exponent;
+	wire [1 : 0] adjust_exponent;
 	wire [2 : 0] dummy_bits;
 	wire init_shft_bit, shft_bit;
 		
@@ -45,7 +46,7 @@ module ClosePath	#(	parameter size_in_mantissa			= 24, //1.M
 	wire [size_in_mantissa 	: 0] rounded_mantissa;
 	wire [size_in_mantissa-1: 0] r_mantissa;
 	
-	assign {shifted_m_b, init_shft_bit} = (exp_difference)? {1'b0, m_b_number[size_in_mantissa-1:1], m_b_number[0]} : {m_b_number, 1'b0};
+	assign {shifted_m_b, init_shft_bit} = (exp_difference)? {1'b0, m_b_number[size_in_mantissa-1:0]} : {m_b_number, 1'b0};
 		
 	//compute unnormalized_mantissa
 	assign adder_mantissa = {1'b0, m_a_number} - {1'b0, shifted_m_b};
@@ -72,12 +73,14 @@ module ClosePath	#(	parameter size_in_mantissa			= 24, //1.M
 								.shft(lzs),
 								.shifted_a({r_mantissa, dummy_bits}));
 								
-	assign rounded_mantissa = (adder_mantissa[size_in_mantissa + 1])? r_mantissa + 1'b1 : r_mantissa;
+	assign rounded_mantissa = (adder_mantissa[size_in_mantissa + 1])? {1'b0, r_mantissa} + 1'b1 : {1'b0, r_mantissa};
 	assign resulted_m_o = (rounded_mantissa[size_in_mantissa])? rounded_mantissa[size_in_mantissa : 1] :
 																rounded_mantissa[size_in_mantissa-1:0];
 	
+	assign adjust_exponent = rounded_mantissa[size_in_mantissa]? 2'd2 : 2'd1;
+	
 	assign ovf = adder_mantissa[size_in_mantissa+1];
 	assign unadjusted_exponent = exp_inter - lzs;
-	assign resulted_e_o =  unadjusted_exponent + 1'b1;
+	assign resulted_e_o =  unadjusted_exponent + adjust_exponent;
 		
 endmodule
