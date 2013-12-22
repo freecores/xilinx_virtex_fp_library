@@ -98,7 +98,7 @@ module Multiply_Accumulate #(	parameter size_mantissa = 24,	//mantissa bits(1.M)
 	
 	assign c_mantissa	= {1'b0,m_c_number, {(shift_mantissa_0_bits){1'b0}}};
 	assign e_ab_number_inter = e_a_number + e_b_number;
-	assign e_ab_number = e_ab_number_inter  - ({1'b1,{(bias_0_bits){1'b0}}} - 1'b1);
+	assign e_ab_number = e_ab_number_inter  - {(bias_0_bits){1'b1}};
 	
 	//find the greater exponent
 	assign ab_greater_exponent = e_ab_number - e_c_number;
