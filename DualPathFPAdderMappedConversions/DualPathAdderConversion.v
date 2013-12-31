@@ -62,7 +62,7 @@ module DualPathAdderConversion #(	parameter size_mantissa 			= 24, //1.M
 	wire [size_exponent     : 0] exp_inter;
 	wire eff_op;
 	
-	wire [size_exception_field - 1 : 0] set_b_sp_case, resulted_exception_field;
+	wire [size_exception_field - 1 : 0] sp_case_o, resulted_exception_field;
 	wire resulted_sign;
 	wire swap;
 	
@@ -238,8 +238,6 @@ module DualPathAdderConversion #(	parameter size_mantissa 			= 24, //1.M
 	//-------------------------------------------------------- end FarPath addition and conversion
 	
 
-	assign set_b_sp_case = do_conversion? zero : sp_case_b_number;
-	
 	//compute exception_field
 	special_cases	#(	.size_exception_field(size_exception_field),
 						.zero(zero), 
@@ -247,11 +245,15 @@ module DualPathAdderConversion #(	parameter size_mantissa 			= 24, //1.M
 						.infinity(infinity),
 						.NaN(NaN))
 		special_cases_instance( .sp_case_a_number(sp_case_a_number),
-								.sp_case_b_number(set_b_sp_case),
-								.sp_case_result_o(resulted_exception_field)); 
-									
+								.sp_case_b_number(sp_case_b_number),
+								.sp_case_result_o(sp_case_o)); 
+	
+	assign resulted_exception_field = do_conversion? sp_case_a_number : sp_case_o;
+	
 	//set zero_flag in case of equal numbers
-	assign zero_flag = ((exp_difference > 1 | !eff_op) & conversion != int_to_FP)? ~(|resulted_m_oFP) : ~(|resulted_m_oCP);
+	assign zero_flag = ((exp_difference > 1 | !eff_op) & conversion != int_to_FP)? 
+							~((|{resulted_m_oFP, sp_case_o[1]}) & (|sp_case_o)) : 
+							~((|{resulted_m_oCP, sp_case_o[1]}) & (|sp_case_o));
 	
 	assign resulted_sign = do_conversion? 	s_a_number : 
 											((exp_difference > 1 | !eff_op)?	(!a_greater_exponent[size_exponent]? s_a_number : (eff_op? ~s_b_number : s_b_number)) : 

@@ -153,9 +153,9 @@ module SinglePathFPAdder #(	parameter size_mantissa 			= 24, //calculate the siz
 		special_cases_instance( .sp_case_a_number(sp_case_a_number),
 										.sp_case_b_number(sp_case_b_number),
 										.sp_case_result_o(resulted_exception_field)); 
-	
+		
 	//set zero_flag in case of equal numbers
-	assign zero_flag = ~(|(resulted_mantissa));
+	assign zero_flag = ~((|{resulted_mantissa,resulted_exception_field[1]}) & (|resulted_exception_field));
 	
 	//compute resulted_sign
 	assign resulted_sign = (eff_op)? 

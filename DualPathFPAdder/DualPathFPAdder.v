@@ -135,7 +135,9 @@ module DualPathFPAdder #(	parameter size_mantissa 			= 24, //1.M
 										.sp_case_result_o(resulted_exception_field)); 
 	
 	//set zero_flag in case of equal numbers
-	assign zero_flag = (exp_difference > 1 | !eff_op)? ~(|fp_resulted_m_o) : ~(|cp_resulted_m_o);
+	assign zero_flag = (exp_difference > 1 | !eff_op)? 
+								~((|{fp_resulted_m_o, resulted_exception_field[1]}) & (|resulted_exception_field))  : 
+								~((|{cp_resulted_m_o, resulted_exception_field[1]}) & (|resulted_exception_field));
 	
 	assign resulted_sign = (exp_difference > 1 | !eff_op)? (!a_greater_exponent[size_exponent]? s_a_number : (eff_op? ~s_b_number : s_b_number)) : (ovf ^ swap);
 		

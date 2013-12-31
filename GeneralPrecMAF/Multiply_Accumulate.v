@@ -68,7 +68,7 @@ module Multiply_Accumulate #(	parameter size_mantissa = 24,	//mantissa bits(1.M)
 	wire [size_mul_mantissa - 1 : 0] shifted_m_ab;
 	wire [size_mul_mantissa - 1 : 0] m_c, m_ab;
 	
-	wire [size_exception_field - 1 : 0] sp_case_result_o;
+	wire [size_exception_field - 1 : 0] sp_case_o, sp_case_result_o;
 	wire [size_mantissa - 2 : 0] final_mantissa;
 	wire [size_exponent - 1 : 0] final_exponent;
 	wire [size_mantissa : 0] rounded_mantissa;
@@ -183,7 +183,7 @@ module Multiply_Accumulate #(	parameter size_mantissa = 24,	//mantissa bits(1.M)
 														.sp_case_result_o(sp_case_result_o));
 				
 	//set zero_flag in case of equal numbers
-	assign zero_flag = ~(|(rounded_mantissa));
+	assign zero_flag = ~((|{rounded_mantissa, sp_case_result_o[1]}) & (|sp_case_result_o));
 	
 	//compute resulted_sign
 	assign sign_res = 	(eff_op)?	(!c_greater_exponent[size_exponent]? 
