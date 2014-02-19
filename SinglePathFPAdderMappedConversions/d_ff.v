@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 //////////////////////////////////////////////////////////////////////////////////
-// Company: 
-// Engineer: 
+// Company: 	UPT	
+// Engineer: 	Constantina-Elena Gavriliu
 // 
 // Create Date:    09:39:58 02/04/2013 
 // Design Name: 
@@ -9,7 +9,7 @@
 // Project Name: 
 // Target Devices: 
 // Tool versions: 
-// Description: 
+// Description: D flip-flop
 //
 // Dependencies: 
 //

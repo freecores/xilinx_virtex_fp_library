@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 //////////////////////////////////////////////////////////////////////////////////
-// Company: 
-// Engineer: 
+// Company: 	UPT
+// Engineer: 	Constantina-Elena Gavriliu
 // 
 // Create Date:    18:50:09 10/17/2013 
 // Design Name: 
@@ -11,7 +11,7 @@
 // Tool versions: 
 // Description: 
 //
-// Dependencies: 
+// Dependencies: 	d_ff.v
 //
 // Revision: 
 // Revision 0.01 - File Created
@@ -19,8 +19,8 @@
 //
 //////////////////////////////////////////////////////////////////////////////////
 module leading_zeros #(	parameter SIZE_INT = 24,	//mantissa bits
-								parameter SIZE_COUNTER	= 5,	//log2(size_mantissa) + 1 = 5)
-								parameter PIPELINE = 2)	
+						parameter SIZE_COUNTER	= 5,	//log2(size_mantissa) + 1 = 5)
+						parameter PIPELINE = 2)	
 							(a, ovf, lz);
  
 	input [SIZE_INT-1:0]    a;
@@ -65,22 +65,18 @@ module leading_zeros #(	parameter SIZE_INT = 24,	//mantissa bits
 			genvar i;
 			for (i = 1; i <= nr_levels - 1; i = i + 1)
 			begin : level_generation
-				//begin : v_levels_begin
 					genvar j;
 					for (j = 0; j <= max_pow_2/(2 ** (i + 2)) - 1; j = j + 1)
 					begin : v_levels
 						assign v_d[i][j] = v_q[i - 1][2*j+1] | v_q[i - 1][2*j];
 					end
-				//end
  
-				//begin : p_levels_begin
-				//	genvar j;
+				
 					for (j = 0; j <= max_pow_2/(2 ** (i + 2)) - 1; j = j + 1)
 					begin : p_levels
 						assign p_d[i][(i+2)*j+i+1] = (~(v_q[i - 1][2*j+1]));
 						assign p_d[i][(i+2)*j+i : (i+2)*j] = (v_q[i - 1][2*j+1] == 1'b1) ? p_q[i - 1][j*(2*i+2)+2*i+1 : j*(2*i+2) + i + 1] : p_q[i - 1][j*(2*i+2)+i : j*(2*i+2)];
 					end
-				//end
 			end
 		end
 	endgenerate
@@ -88,7 +84,6 @@ module leading_zeros #(	parameter SIZE_INT = 24,	//mantissa bits
 	generate
 		if (PIPELINE != 0)
 		begin : pipeline_stages
-			//begin : INSERTION_begin
 				genvar i;
 				for (i = 0; i <= nr_levels - 2; i = i + 1)
 				begin : INSERTION
@@ -104,7 +99,6 @@ module leading_zeros #(	parameter SIZE_INT = 24,	//mantissa bits
 						assign v_q[i] = v_d[i];
 					end
 				end
-			//end
 			assign p_q[nr_levels - 1] = p_d[nr_levels - 1];
 			assign v_q[nr_levels - 1] = v_d[nr_levels - 1];
 		end
@@ -113,14 +107,12 @@ module leading_zeros #(	parameter SIZE_INT = 24,	//mantissa bits
 	generate
 		if (PIPELINE == 0)
 		begin : no_pipeline
-			//begin : xhdl4
 				genvar i;
 				for (i = 0; i <= nr_levels - 1; i = i + 1)
 				begin : NO_INSERTION
 					assign p_q[i] = p_d[i];
 					assign v_q[i] = v_d[i];
 				end
-			//end
 		end
 	endgenerate
  

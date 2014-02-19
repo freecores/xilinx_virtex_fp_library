@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 //////////////////////////////////////////////////////////////////////////////////
-// Company: 
-// Engineer: 
+// Company: 	UPT	
+// Engineer: 	Constantina-Elena Gavriliu
 // 
 // Create Date:    17:41:11 11/04/2013 
 // Design Name: 
@@ -9,9 +9,9 @@
 // Project Name: 
 // Target Devices: 
 // Tool versions: 
-// Description: 
+// Description: Compute effective operation 
 //
-// Dependencies: 
+// Dependencies: 	
 //
 // Revision: 
 // Revision 0.01 - File Created
@@ -19,9 +19,9 @@
 //
 //////////////////////////////////////////////////////////////////////////////////
 module effective_op(	input a_sign,
-							input b_sign,
-							input sub,
-							output reg eff_op);
+						input b_sign,
+						input sub,
+						output reg eff_op);
 	
 	always
 		@(*)
