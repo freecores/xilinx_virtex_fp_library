@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 //////////////////////////////////////////////////////////////////////////////////
-// Company: 
-// Engineer: 
+// Company: 	UPT
+// Engineer: 	Constantina-Elena Gavriliu
 // 
 // Create Date:    00:31:28 12/19/2013 
 // Design Name: 
@@ -10,8 +10,13 @@
 // Target Devices: 
 // Tool versions: 
 // Description: A ± B with mapped conversions 
+//				//do not take into consideration cases for which the operation generates a NaN or Infinity exception (with corresponding sign) when initial "special cases" are not such exceptions
 //
-// Dependencies:  
+// Dependencies:  	effective_op.v
+//					leading_zeros.v
+//					shifter.v
+//					rounding.v
+//					special_cases.v
 //
 // Revision: 
 // Revision 0.01 - File Created
@@ -62,7 +67,7 @@ module DualPathAdderConversion #(	parameter size_mantissa 			= 24, //1.M
 	wire [size_exponent     : 0] exp_inter;
 	wire eff_op;
 	
-	wire [size_exception_field - 1 : 0] sp_case_o, resulted_exception_field;
+	wire [size_exception_field - 1 : 0] set_b_sp_case, resulted_exception_field;
 	wire resulted_sign;
 	wire swap;
 	
@@ -73,30 +78,35 @@ module DualPathAdderConversion #(	parameter size_mantissa 			= 24, //1.M
 	wire [size_exponent - 1 : 0] adjust_mantissaFP;
 	wire [size_exponent - 1 : 0] unadjusted_exponentFP;
 	wire [size_mantissa - 1 : 0] mantissa_to_shiftFP, shifted_m_bFP, convert_neg_mantissaFP;
-	wire [size_mantissa + 1 : 0] adder_mantissaFP;
+	wire [size_mantissa + 2 : 0] adder_mantissaFP;
 	wire [size_mantissa - 1 : 0] resulted_inter_m_oFP, resulted_m_oFP;
-	wire [size_mantissa - 1 : 0] initial_rounding_bitsFP, inter_rounding_bitsFP;
+	wire [size_mantissa - 1 : 0] initial_rounding_bitsFP;
+	wire [size_mantissa - 2 : 0] inter_rounding_bitsFP;
 	wire [double_size_mantissa:0] normalized_mantissaFP;
-	wire [size_mantissa  : 0] unnormalized_mantissaFP, conversion_dummiesFP;
+	wire [size_mantissa + 1 : 0] unnormalized_mantissaFP, conversion_dummiesFP;
 	wire [size_exponent     : 0] shift_value_when_positive_exponentFP, shift_value_when_negative_exponentFP;
 	wire [size_exponent - 1 : 0] shift_valueFP, shft_valFP;
+	wire [size_mantissa - 1 : 0] entity_to_roundFP;
+	wire [size_mantissa : 0] dummy_entityFP;
 	wire [size_exponent     : 0] exponentFP;
 	wire dummy_bitFP;
 	
 	wire [max_size - 1 : 0] max_entityCP;
 	wire [size_mantissa - 1 : 0] shifted_m_bCP;
-	wire [size_mantissa + 1 : 0] adder_mantissaCP;
-	wire [size_mantissa 	: 0] unnormalized_mantissaCP;
+	wire [size_mantissa + 2 : 0] adder_mantissaCP;
+	wire [size_mantissa + 1	: 0] unnormalized_mantissaCP;
 	wire [size_mantissa 	: 0] rounded_mantissaCP;
 	wire [size_mantissa - 1 : 0] r_mantissaCP;
 	wire [size_exponent - 1	: 0] resulted_e_oCP;
 	wire [size_mantissa - 1 : 0] resulted_m_oCP;
 	wire [size_exponent - 1 : 0] unadjusted_exponentCP, adjust_exponentCP;
 	wire [size_exponent - 1 : 0] exp_selectionCP;
-	wire [max_size - size_mantissa : 0] dummy_bitsCP;
+	wire [max_size - size_mantissa : 0] dummy_bitsCP, dummy_entityCP;
 	wire [max_counter - 1 : 0] lzsCP;
 	wire init_shft_bitCP, shft_bitCP;
 	wire lsb_shft_bitCP;
+	wire [4:0] sign_cases;
+	reg intermediar_sign;
 	
 	wire do_conversion;
 	
@@ -118,28 +128,27 @@ module DualPathAdderConversion #(	parameter size_mantissa 			= 24, //1.M
 	assign exp_inter 		= (b_greater_exponent[size_exponent])? {1'b0, e_a_number} : {1'b0, e_b_number};
 	
 	//set shifter always on m_b_number
-	assign {swap, m_a_number, m_b_number} = do_conversion? {1'b0,{e_a_number[0], a_number_i[size_mantissa - 2 :0]}, {1'b1, b_number_i[size_mantissa - 2 :0]}} :
-										(b_greater_exponent[size_exponent])?
-													{1'b0, {1'b1, a_number_i[size_mantissa - 2 :0]}, {1'b1, b_number_i[size_mantissa - 2 :0]}} : 
-													{1'b1, {1'b1, b_number_i[size_mantissa - 2 :0]}, {1'b1, a_number_i[size_mantissa - 2 :0]}};
+	assign {m_a_number, m_b_number} = (b_greater_exponent[size_exponent])? 
+													{{1'b1, a_number_i[size_mantissa - 2 :0]}, {1'b1, b_number_i[size_mantissa - 2 :0]}} : 
+													{{1'b1, b_number_i[size_mantissa - 2 :0]}, {1'b1, a_number_i[size_mantissa - 2 :0]}};
 
 	effective_op effective_op_instance( .a_sign(s_a_number), .b_sign(s_b_number), .sub(sub), .eff_op(eff_op));								
 	
 	
 	//------------------------------------------------------- start ClosePath addition and conversion
-	assign {shifted_m_bCP, init_shft_bit} = (exp_difference)? {1'b0, m_b_number[size_mantissa-1:0]} : {m_b_number, 1'b0};
+	assign {shifted_m_bCP, init_shft_bitCP} = (exp_difference)? {1'b0, m_b_number[size_mantissa-1:0]} : {m_b_number, 1'b0};
 				
 	//compute unnormalized_mantissa
-	assign adder_mantissaCP = {1'b0, m_a_number} - shifted_m_bCP;
+	assign adder_mantissaCP = {1'b0, m_a_number, 1'b0} - {1'b0, shifted_m_bCP, init_shft_bitCP};
 	assign {unnormalized_mantissaCP, shft_bitCP} =
-								(adder_mantissaCP[size_mantissa + 1])?	({~adder_mantissaCP[size_mantissa	: 0], ~init_shft_bitCP}) :
-																		({adder_mantissaCP[size_mantissa	: 0], init_shft_bitCP});
+								(adder_mantissaCP[size_mantissa + 2])?	({~adder_mantissaCP[size_mantissa + 1	: 0], ~init_shft_bitCP}) :
+																		({adder_mantissaCP[size_mantissa + 1	: 0], init_shft_bitCP});
 	
-	assign max_entityCP = do_conversion? (s_a_number? (~a_number_i[max_size-1 : 0]) : a_number_i[max_size-1 : 0]) : 
-													{{(max_size-size_mantissa-1){1'b0}}, unnormalized_mantissaCP[size_mantissa : 0]};
-	assign lsb_shft_bitCP = (do_conversion)? s_a_number : max_entityCP[0];
+	assign max_entityCP = do_conversion? (a_number_i[size_integer-1]? (~a_number_i[max_size-1 : 0]) : a_number_i[max_size-1 : 0]) : 
+													{{(max_size-size_mantissa-2){1'b0}}, unnormalized_mantissaCP[size_mantissa + 1 : 0]};
+	assign lsb_shft_bitCP = (do_conversion)? a_number_i[size_integer-1] : adder_mantissaCP[size_mantissa+2];//sign?
 	
-	assign max_ovfCP = do_conversion? 1'b0 : unnormalized_mantissaCP[size_mantissa];
+	assign max_ovfCP = do_conversion? 1'b0 : unnormalized_mantissaCP[size_mantissa + 1];
 	
 	//compute leading_zeros over unnormalized mantissa
 	leading_zeros #(.SIZE_INT(max_size), .SIZE_COUNTER(max_counter), .PIPELINE(pipeline))
@@ -158,15 +167,17 @@ module DualPathAdderConversion #(	parameter size_mantissa 			= 24, //1.M
 								.arith(lsb_shft_bitCP),
 								.shft(lzsCP),
 								.shifted_a({r_mantissaCP, dummy_bitsCP}));
+								
+	assign dummy_entityCP = (conversion[1] & (&dummy_bitsCP[max_size - size_mantissa - 1:0]) & (~dummy_bitsCP[max_size - size_mantissa]))? (a_number_i[size_integer-1]? ~dummy_bitsCP : dummy_bitsCP) : dummy_bitsCP;
 		
-	assign rounded_mantissaCP = (r_mantissaCP[0] && dummy_bitsCP[max_size - size_mantissa] && (|dummy_bitsCP[max_size - size_mantissa - 1 : 0 ]))? 
+	assign rounded_mantissaCP = (dummy_entityCP[max_size - size_mantissa] && (r_mantissaCP[0] | (|dummy_entityCP[max_size - size_mantissa - 1 : 0 ])))? 
 										r_mantissaCP + 1'b1 : r_mantissaCP;
 	assign resulted_m_oCP = (rounded_mantissaCP[size_mantissa])? rounded_mantissaCP[size_mantissa : 1] :
 																rounded_mantissaCP[size_mantissa-1:0];
 	
 	assign ovfCP = do_conversion? s_a_number : adder_mantissaCP[size_mantissa+1];
 	
-	assign exp_selectionCP = do_conversion? exponentCP : exp_inter;
+	assign exp_selectionCP = do_conversion? exponentCP : exp_inter - 1'b1;
 	assign adjust_exponentCP = exp_selectionCP - lzsCP;
 	assign unadjusted_exponentCP = adjust_exponentCP + size_diff_i_m;
 		
@@ -204,14 +215,15 @@ module DualPathAdderConversion #(	parameter size_mantissa 			= 24, //1.M
 	assign max_entityFP = {s_a_number, shifted_m_bFP[size_mantissa-1 : 0], initial_rounding_bitsFP[size_mantissa-1 : size_mantissa - size_diff_i_m + 1]};
 	
 	//compute unnormalized_mantissa
-	assign adder_mantissaFP = (eff_op)? ({1'b0, m_a_number} - {1'b0, shifted_m_bFP}) : ({1'b0, m_a_number} + {1'b0, shifted_m_bFP});
-	
-	assign {unnormalized_mantissaFP, inter_rounding_bitsFP} = 
-								(adder_mantissaFP[size_mantissa + 1])?	({~adder_mantissaFP[size_mantissa : 0], ~initial_rounding_bitsFP}) :
-																		({adder_mantissaFP[size_mantissa 	: 0], initial_rounding_bitsFP});
+	assign adder_mantissaFP = (eff_op)? ({1'b0, m_a_number, 1'b0} - {1'b0, shifted_m_bFP, initial_rounding_bitsFP[size_mantissa - 1]}) : ({1'b0, m_a_number, 1'b0} + {1'b0, shifted_m_bFP, initial_rounding_bitsFP[size_mantissa - 1]});
 		
-	assign adjust_mantissaFP = unnormalized_mantissaFP[size_mantissa]? 2'd0 :
-										unnormalized_mantissaFP[size_mantissa-1]? 2'd1 : 2'd2;
+	//compute unnormalized_mantissa
+	assign unnormalized_mantissaFP = (adder_mantissaFP[size_mantissa + 2])? ~adder_mantissaFP[size_mantissa + 1 : 0] : adder_mantissaFP[size_mantissa + 1 : 0];
+	
+	assign inter_rounding_bitsFP = ((eff_op)? ((|initial_rounding_bitsFP[size_mantissa - 2 : 0])?~initial_rounding_bitsFP[size_mantissa - 2 : 0] : initial_rounding_bitsFP[size_mantissa - 2 : 0]) : initial_rounding_bitsFP[size_mantissa - 2 : 0]);
+	
+	assign adjust_mantissaFP = unnormalized_mantissaFP[size_mantissa + 1]? 2'd0 :
+										unnormalized_mantissaFP[size_mantissa]? 2'd1 : 2'd2;
 
 	//compute shifting over unnormalized_mantissa
 	shifter #(	.INPUT_SIZE(double_size_mantissa+1),
@@ -221,23 +233,35 @@ module DualPathAdderConversion #(	parameter size_mantissa 			= 24, //1.M
 				.PIPELINE(pipeline),
 				.POSITION(pipeline_pos))
 		unnormalized_no_shifter_FP_instance(.a({unnormalized_mantissaFP, inter_rounding_bitsFP}),
-											.arith(1'b0),
+											.arith(inter_rounding_bitsFP[0]),
 											.shft(adjust_mantissaFP),
 											.shifted_a({normalized_mantissaFP, dummy_bitFP}));
+	
+	assign correction = do_conversion? 1'b0 : 
+						eff_op? ((|initial_rounding_bitsFP[size_mantissa - 2 : 0])? 
+								((adder_mantissaFP[0] | ((~adder_mantissaFP[0]) & (~adder_mantissaFP[size_mantissa]) & (~initial_rounding_bitsFP[size_mantissa - 1]) 
+										& (~(&{normalized_mantissaFP[size_mantissa-1 : 0],dummy_bitFP}))))? 1'b1 : 1'b0) : 1'b0) : 1'b0;
+	
+	
+	assign entity_to_roundFP = do_conversion? max_entityFP[size_mantissa-1 : 0] : normalized_mantissaFP[double_size_mantissa : double_size_mantissa - size_mantissa + 1];
+	assign dummy_entityFP = do_conversion? {initial_rounding_bitsFP[size_mantissa - size_diff_i_m : 0], {size_diff_i_m{1'b0}}} : normalized_mantissaFP[double_size_mantissa - size_mantissa: 0];
 	
 	//instantiate rounding_component
 	rounding #(	.SIZE_MOST_S_MANTISSA(size_mantissa),
 				.SIZE_LEAST_S_MANTISSA(size_mantissa + 2'd1))
-		rounding_FP_instance(	.unrounded_mantissa(normalized_mantissaFP[double_size_mantissa : double_size_mantissa - size_mantissa + 1]),
-								.dummy_bits(normalized_mantissaFP[double_size_mantissa - size_mantissa: 0]),
+		rounding_FP_instance(	.unrounded_mantissa(entity_to_roundFP),
+								.dummy_bits(dummy_entityFP),
+								.correction(correction),
 								.rounded_mantissa(resulted_inter_m_oFP));
 	
-	assign resulted_m_oFP = do_conversion? max_entityFP[size_mantissa-1 : 0] : resulted_inter_m_oFP;
+	assign resulted_m_oFP = resulted_inter_m_oFP;
 	assign unadjusted_exponentFP = exp_inter - adjust_mantissaFP;	
 	assign resulted_e_oFP = do_conversion? max_entityFP[size_mantissa+size_exponent-2 : size_mantissa-1] : unadjusted_exponentFP + 1'b1;
 	//-------------------------------------------------------- end FarPath addition and conversion
 	
 
+	assign set_b_sp_case = do_conversion? zero : sp_case_b_number;
+	
 	//compute exception_field
 	special_cases	#(	.size_exception_field(size_exception_field),
 						.zero(zero), 
@@ -245,21 +269,62 @@ module DualPathAdderConversion #(	parameter size_mantissa 			= 24, //1.M
 						.infinity(infinity),
 						.NaN(NaN))
 		special_cases_instance( .sp_case_a_number(sp_case_a_number),
-								.sp_case_b_number(sp_case_b_number),
-								.sp_case_result_o(sp_case_o)); 
-	
-	assign resulted_exception_field = do_conversion? sp_case_a_number : sp_case_o;
-	
+								.sp_case_b_number(set_b_sp_case),
+								.sp_case_result_o(resulted_exception_field)); 
+									
 	//set zero_flag in case of equal numbers
-	assign zero_flag = ((exp_difference > 1 | !eff_op) & conversion != int_to_FP)? 
-							~((|{resulted_m_oFP, sp_case_o[1]}) & (|sp_case_o)) : 
-							~((|{resulted_m_oCP, sp_case_o[1]}) & (|sp_case_o));
+	assign zero_flag = ((exp_difference > 1 | !eff_op) & conversion != int_to_FP)? ~(|resulted_m_oFP) : ~(|resulted_m_oCP);
 	
-	assign resulted_sign = do_conversion? 	s_a_number : 
-											((exp_difference > 1 | !eff_op)?	(!a_greater_exponent[size_exponent]? s_a_number : (eff_op? ~s_b_number : s_b_number)) : 
-																				(ovfCP ^ swap));
+	assign sign_cases = {eff_op, s_a_number, s_b_number, a_greater_exponent[size_exponent], b_greater_exponent[size_exponent]};
 	
-	assign resulted_number_o = (zero_flag)? {size{1'b0}} : ((exp_difference > 1 | !eff_op) & conversion != int_to_FP)? 	
+	always 
+		@(*)
+	begin
+		case (sign_cases)
+			5'b00000:	intermediar_sign = 1'b0;
+			5'b00001:	intermediar_sign = 1'b0;
+			5'b00010:	intermediar_sign = 1'b0;
+			
+			5'b10000:	intermediar_sign = ~max_ovfCP;
+			5'b10001:	intermediar_sign = 1'b0;
+			5'b10010:	intermediar_sign = 1'b1;
+			
+			5'b10100:	intermediar_sign = ~max_ovfCP;
+			5'b10101:	intermediar_sign = 1'b0;
+			5'b10110:	intermediar_sign = 1'b1;
+			
+			5'b00100:	intermediar_sign = 1'b0;
+			5'b00101:	intermediar_sign = 1'b0;
+			5'b00110:	intermediar_sign = 1'b0;
+			
+			5'b11000:	intermediar_sign = max_ovfCP;
+			5'b11001:	intermediar_sign = 1'b1;
+			5'b11010:	intermediar_sign = 1'b0;
+		
+			5'b01000:	intermediar_sign = 1'b1;
+			5'b01001:	intermediar_sign = 1'b1;
+			5'b01010:	intermediar_sign = 1'b1;
+			 
+			5'b01100:	intermediar_sign = 1'b1;
+			5'b01101:	intermediar_sign = 1'b1;
+			5'b01110:	intermediar_sign = 1'b1;
+			
+			5'b11100:	intermediar_sign = max_ovfCP;
+			5'b11101:	intermediar_sign = 1'b1;
+			5'b11110:	intermediar_sign = 1'b0;
+			
+			default: intermediar_sign = 1'b1;
+		endcase
+	end
+	
+	assign resulted_sign = do_conversion? s_a_number : intermediar_sign;
+	
+	assign resulted_number_o = 	conversion[0]? {3'd0, resulted_e_oFP, resulted_m_oFP[size_mantissa-2 : 0]} :
+									conversion[1]? {normal_number, a_number_i[size_integer - 1],resulted_e_oCP, resulted_m_oCP[size_mantissa-2 : 0]} :
+									(zero_flag)? {size{1'b0}} : 
+										(!sp_case_a_number)? {b_number_i[size-1 : size-size_exception_field], eff_op ^ s_b_number, b_number_i[size-1-size_exception_field-1 : 0]} : 
+											(!sp_case_b_number)? {a_number_i[size-1 : 0]} :
+													((exp_difference > 1 | !eff_op) & conversion != int_to_FP)? 	
 													{resulted_exception_field, resulted_sign, resulted_e_oFP, resulted_m_oFP[size_mantissa-2 : 0]}:
 													{resulted_exception_field, resulted_sign, resulted_e_oCP, resulted_m_oCP[size_mantissa-2 : 0]};
 endmodule

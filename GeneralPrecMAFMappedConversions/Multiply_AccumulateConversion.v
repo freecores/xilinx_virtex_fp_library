@@ -22,10 +22,10 @@ module Multiply_AccumulateConversion #(	parameter size_mantissa = 24,	//mantissa
 										parameter size_exponent = 8,	//exponent bits
 										parameter size_counter	= 5,	//log2(size_mantissa) + 1 = 5
 										parameter size_exception_field = 2,	// zero/normal numbers/infinity/NaN
-										parameter zero			= 00, //00
-										parameter normal_number = 01, //01
-										parameter infinity		= 10, //10
-										parameter NaN			= 11, //11
+										parameter [size_exception_field - 1 : 0] zero			= 00, //00
+										parameter [size_exception_field - 1 : 0] normal_number 	= 01, //01
+										parameter [size_exception_field - 1 : 0] infinity		= 10, //10
+										parameter [size_exception_field - 1 : 0] NaN			= 11, //11
 										parameter size_integer			= 32,
 										parameter counter_integer		= 6, //log2(size_integer) + 1 = 6)
 										parameter [1 : 0] FP_operation 	= 0, //00 
@@ -35,9 +35,7 @@ module Multiply_AccumulateConversion #(	parameter size_mantissa = 24,	//mantissa
 										parameter pipeline_pos	= 0,  //8 bits
 								
 										parameter size = size_exponent + size_mantissa + size_exception_field)
-									(	input clk,
-										input rst,
-										input [1 : 0] conversion,
+									(	input [1 : 0] conversion,
 										input [size - 1:0] c_number_i,
 										input [size - 1:0] a_number_i,
 										input [size - 1:0] b_number_i,
@@ -68,25 +66,31 @@ module Multiply_AccumulateConversion #(	parameter size_mantissa = 24,	//mantissa
 	wire [size_exponent - 1 : 0] exp_difference;
 	wire [size_exponent     : 0] exp_inter;
 	
+	wire [size_mantissa - 2	: 0] mul_mantissa;
 	wire [size_mul_mantissa - 1	: 0] m_ab_mantissa, c_mantissa;
 	wire [size_exponent			: 0] e_ab_number_inter, e_ab_number;
 	wire [size_mul_counter - 1	: 0] lz_mul;
 	
 	wire zero_flag;
-	wire sign_res;
+	wire sign_res, sign_inter;
 	wire eff_op;
 	
-	wire [size_mantissa - 1 	: 0] initial_rounding_bits, inter_rounding_bits, final_rounding_bits;
+	wire [size_mantissa - 1 	: 0] initial_rounding_bits, inter_rounding_bits, final_rounding_bits, max_inter_rounding_bits;
 	wire [size_mul_mantissa + 1 : 0] normalized_mantissa, adder_mantissa;
 	wire [size_mul_mantissa		: 0] unnormalized_mantissa;
 	wire [size_mul_mantissa - 1 : 0] shifted_m_ab, convert_neg_mantissa, mantissa_to_shift;
 	wire [size_mul_mantissa - 1 : 0] m_c, m_ab;
+	
+	wire [size_exception_field - 1 : 0] sp_case_mul_result_o;
 	
 	wire [size_exception_field - 1 : 0] sp_case_o, sp_case_result_o;
 	wire [size_mantissa - 2 : 0] final_mantissa;
 	wire [size_exponent - 1 : 0] final_exponent;
 	wire [size_mantissa : 0] rounded_mantissa;
 	
+	wire [max_size - 1 : 0]	entity_to_round;
+	wire [size_mul_mantissa + 1 : 0] dummy_to_round, inter_dummy_to_round;
+	wire [max_size - size_mantissa - 2 : 0] dummy_out;
 	
 	wire [size_mantissa - 1	: 0] resulted_mantissa;
 	wire [size_exponent - 1 : 0] resulted_exponent;
@@ -130,6 +134,9 @@ module Multiply_AccumulateConversion #(	parameter size_mantissa = 24,	//mantissa
 									.b_mantissa_i(m_b_number),
 									.mul_mantissa(m_ab_mantissa));
 	
+	assign mul_mantissa = m_ab_mantissa[size_mul_mantissa-1]? 	m_ab_mantissa[size_mul_mantissa-2 : size_mul_mantissa - size_mantissa] : 
+																m_ab_mantissa[size_mul_mantissa-3 : size_mul_mantissa - size_mantissa - 1];
+	
 	assign c_mantissa	= {1'b0,m_c_number, {(shift_mantissa_0_bits){1'b0}}};
 	assign e_ab_number_inter = e_a_number + e_b_number;
 	assign e_ab_number = e_ab_number_inter  - {(bias_0_bits){1'b1}};
@@ -153,9 +160,9 @@ module Multiply_AccumulateConversion #(	parameter size_mantissa = 24,	//mantissa
 	                     (shift_value_when_positive_exponent[size_exponent])? (~shift_value_when_positive_exponent[size_exponent - 1 : 0]): 
 	                                                                           shift_value_when_positive_exponent[size_exponent - 1 : 0];
 	assign shft_val = do_conversion? shift_value : exp_difference;
-	assign convert_neg_mantissa = {1'b0, ~c_number_i[size_mantissa-2 : 0]};
-	assign mantissa_to_shift = conversion[0]? 	(s_c_number? {{size_mantissa{1'b0}}, convert_neg_mantissa + 1'b1} : 
-												{{size_mantissa{1'b0}}, 1'b1, c_number_i[size_mantissa-2 : 0]}) : m_ab;
+	assign convert_neg_mantissa = {{(size_mantissa){1'b1}}, 1'b0, ~c_number_i[size_mantissa-2 : 0]};
+	assign mantissa_to_shift = conversion[0]? 	(s_c_number? {{size_mantissa{1'b1}}, convert_neg_mantissa + 1'b1} : {{size_mantissa{1'b0}}, 1'b1, c_number_i[size_mantissa-2 : 0]}) :
+								m_ab;
 	assign arith_shift = conversion[0]? s_c_number : 1'b0;
 	
 	//shift m_ab_number				
@@ -190,17 +197,17 @@ module Multiply_AccumulateConversion #(	parameter size_mantissa = 24,	//mantissa
 	//compute unnormalized_mantissa
 	assign 	unnormalized_mantissa =
 				(adder_mantissa[size_mul_mantissa + 1])?	(~adder_mantissa[size_mul_mantissa : 0]) : adder_mantissa[size_mul_mantissa 	: 0];
-	assign 	inter_rounding_bits = do_conversion? 	(s_c_number? {size_mantissa{1'b1}} : {size_mantissa{1'b0}}) : 
+	assign 	inter_rounding_bits = conversion[0]? {initial_rounding_bits[size_mantissa - size_diff_i_m : 0], {(size_diff_i_m - 1){initial_rounding_bits[0]}}} : 
+									conversion[1]? 	{size_mantissa{1'b0}} : 
 													((adder_mantissa[size_mul_mantissa + 1])? ~initial_rounding_bits : initial_rounding_bits);
 												
-	assign max_entityINT_FP = do_conversion? (s_c_number? (~c_number_i[max_size-1 : 0]) :  c_number_i[max_size-1 : 0]) : 
+	assign max_entityINT_FP = do_conversion? (c_number_i[size_integer - 1]? (~c_number_i[max_size-1 : 0]) :  c_number_i[max_size-1 : 0]) : 
 													unnormalized_mantissa[max_size-1 : 0];
 	assign max_entityINT_FP_msb = do_conversion? {(size_mul_mantissa-max_size+1){1'b0}} : unnormalized_mantissa[size_mul_mantissa : max_size];
 	
-	assign lsb_shft_bit = (do_conversion)? s_c_number : max_entityINT_FP[0];
+	assign lsb_shft_bit = do_conversion? 	conversion[0]? s_c_number : c_number_i[size_integer-1] : max_entityINT_FP[0];
 	
 	assign max_ovf = do_conversion? 1'b0 : unnormalized_mantissa[size_mul_mantissa];
-	
 	
 	//instantiate leading_zeros component
 	leading_zeros #(.SIZE_INT(size_mul_mantissa + 1'b1),
@@ -210,6 +217,8 @@ module Multiply_AccumulateConversion #(	parameter size_mantissa = 24,	//mantissa
 								.ovf(max_ovf), 
 								.lz(lz_mul));
 	
+	assign max_inter_rounding_bits = conversion[1]? {size_mantissa{c_number_i[size_integer-1]}} : {inter_rounding_bits, inter_rounding_bits[0]};
+	
 	//instantiate shifter component
 	shifter #(	.INPUT_SIZE(size_mul_mantissa + size_mantissa + 1),
 				.SHIFT_SIZE(size_mul_counter),
@@ -217,17 +226,25 @@ module Multiply_AccumulateConversion #(	parameter size_mantissa = 24,	//mantissa
 				.DIRECTION(1'b1), 
 				.PIPELINE(pipeline),
 				.POSITION(pipeline_pos))
-		shifter_instance(	.a({{max_entityINT_FP_msb, max_entityINT_FP}, inter_rounding_bits}),
+		shifter_instance(	.a( {max_entityINT_FP_msb, max_entityINT_FP, max_inter_rounding_bits}),
 							.arith(lsb_shft_bit),
 							.shft(lz_mul),
 							.shifted_a({normalized_mantissa, final_rounding_bits}));
-												
+	
+	assign inter_dummy_to_round = {normalized_mantissa[size_mantissa + 1 : 0], final_rounding_bits};
+	
+	assign entity_to_round 	= conversion[0]? max_entityFP_INT : {{(max_size - size_mantissa){1'b0}}, normalized_mantissa[size_mul_mantissa+1 : size_mantissa + 2]};
+	assign dummy_to_round	= conversion[0]? {inter_rounding_bits, {(size_mantissa + 2){1'b0}}} :  
+								(conversion[1] & (&{normalized_mantissa[size_mantissa : 0], final_rounding_bits}) & (~normalized_mantissa[size_mantissa+1]))? 
+									(c_number_i[size_integer-1]? 	~inter_dummy_to_round : inter_dummy_to_round) :
+								{normalized_mantissa[size_mantissa + 1 : 0], final_rounding_bits};
+								
 	//instantiate rounding_component
-	rounding #(	.SIZE_MOST_S_MANTISSA(size_mantissa+1),
+	rounding #(	.SIZE_MOST_S_MANTISSA(max_size),
 				.SIZE_LEAST_S_MANTISSA(size_mul_mantissa+2))
-		rounding_instance(	.unrounded_mantissa({1'b0, normalized_mantissa[size_mul_mantissa+1 : size_mantissa + 2]}),
-		                    .dummy_bits({normalized_mantissa[size_mantissa + 1 : 0],final_rounding_bits}),
-		                    .rounded_mantissa(rounded_mantissa));
+		rounding_instance(	.unrounded_mantissa(entity_to_round ),
+		                    .dummy_bits(dummy_to_round),
+		                    .rounded_mantissa({dummy_out, rounded_mantissa}));
 
 							
 	assign max_exp_selection = do_conversion? exponent : exp_inter;
@@ -237,7 +254,7 @@ module Multiply_AccumulateConversion #(	parameter size_mantissa = 24,	//mantissa
 	assign max_resulted_e_o = (do_conversion & ~(|{max_entityINT_FP_msb, max_entityINT_FP}))? bias : max_unadjusted_exponent + rounded_mantissa[size_mantissa];
 	
 	assign resulted_exponent = conversion[0]? 	max_entityFP_INT[size_mantissa+size_exponent-2 : size_mantissa-1] : max_resulted_e_o;
-	assign resulted_mantissa = conversion[0]?	max_entityFP_INT[size_mantissa-1 : 0] :
+	assign resulted_mantissa = conversion[0]?	rounded_mantissa/*max_entityFP_INT[size_mantissa-1 : 0]*/ :
 												(rounded_mantissa[size_mantissa])? 	(rounded_mantissa[size_mantissa : 1]) : 
 																						(rounded_mantissa[size_mantissa-1 : 0]);
 							
@@ -251,18 +268,45 @@ module Multiply_AccumulateConversion #(	parameter size_mantissa = 24,	//mantissa
 											.sp_case_b_number(sp_case_b_number),
 											.sp_case_c_number(sp_case_c_number),
 											.sp_case_result_o(sp_case_o));
+											
+	special_cases_mul	#(	.size_exception_field(size_exception_field),
+							.zero(zero),
+							.normal_number(normal_number),
+							.infinity(infinity),
+							.NaN(NaN))
+		special_cases_mul_instance(	.sp_case_a_number(sp_case_a_number),
+									.sp_case_b_number(sp_case_b_number),
+									.sp_case_result_o(sp_case_mul_result_o));
 	
-	assign sp_case_result_o = do_conversion? sp_case_c_number : sp_case_o;
+	assign sp_case_result_o = conversion[0]? 2'd0 : 
+								conversion[1]? normal_number : sp_case_o;
 	
 	//set zero_flag in case of equal numbers
-	assign zero_flag = ~((|{resulted_mantissa,sp_case_o[1]}) & (|sp_case_o));
+	assign zero_flag = ~(|(rounded_mantissa));
 	
 	//compute resulted_sign
-	assign sign_res = 	do_conversion? s_c_number : ((eff_op)?	(!c_greater_exponent[size_exponent]? 
-										(!ab_greater_exponent[size_exponent]? ~adder_mantissa[size_mul_mantissa+1] : s_c_number) : ~(s_b_number^s_a_number)) : s_c_number);
+	sign_computation sign_computation_instance(	.eff_op					(eff_op),
+												.s_a_number				(s_c_number),
+												.s_b_number				(s_a_number ^ s_b_number),
+												.a_greater_exponent		(c_greater_exponent[size_exponent]),
+												.b_greater_exponent		(ab_greater_exponent[size_exponent]),
+												.adder_mantissa_ovf		(adder_mantissa[size_mul_mantissa]),
+												.sign					(sign_inter));
+	
+	assign sign_res = 	conversion[0]? 1'b0 :
+						conversion[1]? c_number_i[size_integer-1] : 
+						sign_inter;
+						//((eff_op)?	(!c_greater_exponent[size_exponent]? 
+						//				(!ab_greater_exponent[size_exponent]? ~adder_mantissa[size_mul_mantissa+1] : s_c_number) : ~(s_b_number^s_a_number)) : s_c_number);
 													
 	assign final_mantissa = resulted_mantissa;
 	
 	assign final_exponent = resulted_exponent;
-	assign resulting_number_o = (zero_flag)? {size{1'b0}} :{sp_case_result_o, sign_res, final_exponent, final_mantissa};
+	assign resulting_number_o = (zero_flag)? {size{1'b0}} : 
+								((!(|sp_case_a_number) || !(|sp_case_b_number)) & (~do_conversion))? {c_number_i[size-1 : size-size_exception_field], s_c_number, c_number_i[size-1-size_exception_field-1 : 0]} :
+									((!(|sp_case_c_number)) & (~do_conversion) )? 
+										(sub?
+											{sp_case_mul_result_o, ~(s_a_number^s_b_number), e_ab_number[size_exponent-1 : 0], mul_mantissa} :
+											{sp_case_mul_result_o, s_a_number^s_b_number, e_ab_number[size_exponent-1 : 0], mul_mantissa}) :
+												{sp_case_result_o, sign_res, final_exponent, final_mantissa};
 endmodule

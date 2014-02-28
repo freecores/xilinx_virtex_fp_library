@@ -18,23 +18,21 @@
 // Additional Comments: 
 //
 //////////////////////////////////////////////////////////////////////////////////
-module Multiply_Accumulate #(	parameter size_mantissa = 24,	//mantissa bits(1.M)
+module Multiply_Accumulate #(	parameter size_mantissa = 24,			//mantissa bits(1.M)
 										parameter size_exponent = 8,	//exponent bits
 										parameter size_counter	= 5,	//log2(size_mantissa) + 1 = 5
-										parameter size_exception_field = 2,	// zero/normal numbers/infinity/NaN
-										parameter zero				= 00, //00
-										parameter normal_number = 01, //01
-										parameter infinity		= 10, //10
-										parameter NaN				= 11, //11
+										parameter size_exception_field 	= 2,	// zero/normal numbers/infinity/NaN
+										parameter zero					= 00, 	//00
+										parameter normal_number 		= 01, 	//01
+										parameter infinity				= 10, 	//10
+										parameter NaN					= 11, 	//11
 										parameter pipeline		= 0,
 										parameter pipeline_pos	= 0,  //8 bits
 								
 										parameter size = size_exponent + size_mantissa + size_exception_field,
 										parameter size_mul_mantissa = size_mantissa + size_mantissa,
 										parameter size_mul_counter = size_counter + 1)
-									(	input clk,
-										input rst,
-										input [size - 1:0] a_number_i,
+									(	input [size - 1:0] a_number_i,
 										input [size - 1:0] b_number_i,
 										input [size - 1:0] c_number_i,
 										input sub,
@@ -54,6 +52,8 @@ module Multiply_Accumulate #(	parameter size_mantissa = 24,	//mantissa bits(1.M)
 	wire [size_exponent - 1 : 0] unadjusted_exponent;
 	wire [size_exponent     : 0] exp_inter;
 	
+	wire [size_mantissa - 2	: 0] mul_mantissa;
+	
 	wire [size_mul_mantissa - 1	: 0] m_ab_mantissa, c_mantissa;
 	wire [size_exponent			: 0] e_ab_number_inter, e_ab_number;
 	wire [size_mul_counter - 1	: 0] lz_mul;
@@ -68,7 +68,9 @@ module Multiply_Accumulate #(	parameter size_mantissa = 24,	//mantissa bits(1.M)
 	wire [size_mul_mantissa - 1 : 0] shifted_m_ab;
 	wire [size_mul_mantissa - 1 : 0] m_c, m_ab;
 	
-	wire [size_exception_field - 1 : 0] sp_case_o, sp_case_result_o;
+	wire [size_exception_field - 1 : 0] sp_case_mul_result_o;
+	
+	wire [size_exception_field - 1 : 0] sp_case_result_o;
 	wire [size_mantissa - 2 : 0] final_mantissa;
 	wire [size_exponent - 1 : 0] final_exponent;
 	wire [size_mantissa : 0] rounded_mantissa;
@@ -95,6 +97,9 @@ module Multiply_Accumulate #(	parameter size_mantissa = 24,	//mantissa bits(1.M)
 		multiply_instance (	.a_mantissa_i(m_a_number),
 									.b_mantissa_i(m_b_number),
 									.mul_mantissa(m_ab_mantissa));
+									
+	assign mul_mantissa = m_ab_mantissa[size_mul_mantissa-1]? 	m_ab_mantissa[size_mul_mantissa-2 : size_mul_mantissa - size_mantissa] : 
+																m_ab_mantissa[size_mul_mantissa-3 : size_mul_mantissa - size_mantissa - 1];
 	
 	assign c_mantissa	= {1'b0,m_c_number, {(shift_mantissa_0_bits){1'b0}}};
 	assign e_ab_number_inter = e_a_number + e_b_number;
@@ -171,19 +176,28 @@ module Multiply_Accumulate #(	parameter size_mantissa = 24,	//mantissa bits(1.M)
 		                    .dummy_bits({normalized_mantissa[size_mantissa + 1 : 0],final_rounding_bits}),
 		                    .rounded_mantissa(rounded_mantissa));
 		
-	//instantiate special_cases_mul_acc component
+	//instantiate special_cases_mul and special_cases_mul_acc components
 	special_cases_mul_acc	#(	.size_exception_field(size_exception_field),
-										.zero(zero),
-										.normal_number(normal_number),
-										.infinity(infinity),
-										.NaN(NaN))
+								.zero(zero),
+								.normal_number(normal_number),
+								.infinity(infinity),
+								.NaN(NaN))
 		special_cases_mul_acc_instance	(	.sp_case_a_number(sp_case_a_number),
-														.sp_case_b_number(sp_case_b_number),
-														.sp_case_c_number(sp_case_c_number),
-														.sp_case_result_o(sp_case_result_o));
+											.sp_case_b_number(sp_case_b_number),
+											.sp_case_c_number(sp_case_c_number),
+											.sp_case_result_o(sp_case_result_o));
+														
+	special_cases_mul	#(	.size_exception_field(size_exception_field),
+							.zero(zero),
+							.normal_number(normal_number),
+							.infinity(infinity),
+							.NaN(NaN))
+		special_cases_mul_instance(	.sp_case_a_number(sp_case_a_number),
+									.sp_case_b_number(sp_case_b_number),
+									.sp_case_result_o(sp_case_mul_result_o));
 				
 	//set zero_flag in case of equal numbers
-	assign zero_flag = ~((|{rounded_mantissa, sp_case_result_o[1]}) & (|sp_case_result_o));
+	assign zero_flag = ~(|(rounded_mantissa));
 	
 	//compute resulted_sign
 	assign sign_res = 	(eff_op)?	(!c_greater_exponent[size_exponent]? 
@@ -195,5 +209,11 @@ module Multiply_Accumulate #(	parameter size_mantissa = 24,	//mantissa bits(1.M)
 	
 	assign unadjusted_exponent = exp_inter - lz_mul;
 	assign final_exponent = unadjusted_exponent + 2'd2;
-	assign resulting_number_o = (zero_flag)? {size{1'b0}} :{sp_case_result_o, sign_res, final_exponent, final_mantissa};
+	assign resulting_number_o = (zero_flag)? {size{1'b0}} :
+								(!sp_case_a_number || !sp_case_b_number)? {c_number_i[size-1 : size-size_exception_field], s_c_number, c_number_i[size-1-size_exception_field-1 : 0]} :
+								(!sp_case_c_number)? 
+									(eff_op?
+										{sp_case_mul_result_o, ~(s_a_number^s_b_number), e_ab_number[size_exponent-1 : 0], mul_mantissa} :
+										{sp_case_mul_result_o, s_a_number^s_b_number, e_ab_number[size_exponent-1 : 0], mul_mantissa}) :
+											{sp_case_result_o, sign_res, final_exponent, final_mantissa};
 endmodule

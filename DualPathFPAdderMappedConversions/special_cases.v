@@ -1,17 +1,17 @@
 `timescale 1ns / 1ps
 //////////////////////////////////////////////////////////////////////////////////
-// Company: 
-// Engineer: 
+// Company: 	UPT	
+// Engineer: 	Constantina-Elena Gavriliu
 // 
 // Create Date:    18:56:11 10/07/2013 
 // Design Name: 
-// Module Name:    special_cases_mul_acc
+// Module Name:    special_cases
 // Project Name: 
 // Target Devices: 
 // Tool versions: 
-// Description: 
-//
-// Dependencies: 
+// Description: Compute corresponding special cases (exceptions)
+//				//do not take into consideration cases for which the operation generates a NaN or Infinity exception (with corresponding sign) when initial "special cases" are not such exceptions
+// Dependencies: 	SinglePathFPAdder
 //
 // Revision: 
 // Revision 0.01 - File Created

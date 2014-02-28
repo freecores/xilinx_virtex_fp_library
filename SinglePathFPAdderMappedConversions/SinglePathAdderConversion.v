@@ -238,7 +238,8 @@ module SinglePathAdderConversion #(	parameter size_mantissa 	= 24, //calculate t
 								.sp_case_result_o(sp_case_o)); 
 								
 	//compute special case
-	assign resulted_exception_field = do_conversion? sp_case_a_number : sp_case_o;
+	assign resulted_exception_field = conversion[0]? 2'd0:
+										conversion[1]? normal_number : sp_case_o;
 	
 	//set zero_flag in case of equal numbers
 	assign zero_flag = ~((|{resulted_mantissa,sp_case_o[1]}) & (|sp_case_o));
@@ -285,7 +286,8 @@ module SinglePathAdderConversion #(	parameter size_mantissa 	= 24, //calculate t
 		endcase
 	end
 	
-	assign resulted_sign = do_conversion? s_a_number : intermediar_sign;
+	assign resulted_sign = conversion[0]? 1'b0 : 
+								conversion[1]? a_number_i[size_integer-1] : intermediar_sign;
 																		
 	assign resulted_number_o =  do_conversion? {resulted_exception_field, resulted_sign, resulted_exponent, resulted_mantissa[size_mantissa - 2 : 0]} :
 								(zero_flag | (~(|resulted_exception_field)))? {size{1'b0}} :
